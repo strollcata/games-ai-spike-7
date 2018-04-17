@@ -49,32 +49,9 @@ def on_key_press(symbol, modifiers):
         for agent in world.agents:
             agent.scale.x = max(5, agent.scale.x - 5)
             agent.scale.y = max(5, agent.scale.y - 5)
-    elif symbol == KEY.D:
-        for agent in world.agents:
-            agent.weighted_sum = not agent.weighted_sum
-            if not agent.weighted_sum:
-                agent.active_modes = []
-    elif symbol == KEY.U:
-        for agent in world.agents:
-            agent.parameter_shift("up")
-    elif symbol == KEY.J:
-        for agent in world.agents:
-            agent.parameter_shift("down")
-    elif symbol == KEY.G:
-        for agent in world.agents:
-            if agent.wander_parameter == 'dist':
-                agent.wander_parameter = 'radius'
-            elif agent.wander_parameter == 'radius':
-                agent.wander_parameter = 'jitter'
-            elif agent.wander_parameter == 'jitter':
-                agent.wander_parameter = 'dist'
     elif symbol in AGENT_MODES:
-        for agent_num in range(len(world.agents)):
-            agent = world.agents[agent_num]
-            if agent.weighted_sum:
-                agent.active_modes.append(AGENT_MODES[symbol])
-            else:
-                agent.mode = AGENT_MODES[symbol]
+        for agent in world.agents:
+            agent.mode = AGENT_MODES[symbol]
 
 
 
@@ -121,3 +98,35 @@ if __name__ == '__main__':
         # swap the double buffer
         win.flip()
 
+#---------------------------------------------------------------------------------------------------------
+#Extra controls from before I fully understood the task.
+#I'm leaving them here as an archive.
+#All of these controls are related to either prior implementation of weighted-sum or parameter shifting.
+#---------------------------------------------------------------------------------------------------------
+#    elif symbol == KEY.D:
+#        for agent in world.agents:
+#            agent.weighted_sum = not agent.weighted_sum
+#            if not agent.weighted_sum:
+#                agent.active_modes = []
+#    elif symbol == KEY.U:
+#        for agent in world.agents:
+#            agent.parameter_shift("up")
+#    elif symbol == KEY.J:
+#        for agent in world.agents:
+#            agent.parameter_shift("down")
+#    elif symbol == KEY.G:
+#        for agent in world.agents:
+#            if agent.wander_parameter == 'dist':
+#                agent.wander_parameter = 'radius'
+#            elif agent.wander_parameter == 'radius':
+#                agent.wander_parameter = 'jitter'
+#            elif agent.wander_parameter == 'jitter':
+#                agent.wander_parameter = 'dist'
+#    elif symbol in AGENT_MODES:
+#        for agent_num in range(len(world.agents)):
+#            agent = world.agents[agent_num]
+#            if agent.weighted_sum:
+#                agent.active_modes.append(AGENT_MODES[symbol])
+#            else:
+#                agent.mode = AGENT_MODES[symbol]
+#---------------------------------------------------------------------------------------------------------

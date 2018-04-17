@@ -19,9 +19,7 @@ AGENT_MODES = {
     KEY._5: 'flee',
     KEY._6: 'follow_path',
     KEY._7: 'wander',
-    KEY._8: 'alignment',
-    KEY._9: 'cohesion',
-    KEY._0: 'separation',
+    KEY._8: 'flocking'
 }
 
 
@@ -61,23 +59,16 @@ class Agent(object):
         self.path = Path()
         self.randomise_path()
         self.waypoint_threshold = 50.0
-        self.group_threshold = 250.0
+        self.group_threshold = 300.0
         self.show_info = False
         self.wander_target = Vector2D(1, 0)
-        self.base_wander_dist = 1.0
-        self.base_wander_radius = 1.0
-        self.base_wander_jitter = 10.0
-        self.wander_dist = self.base_wander_dist * scale
-        self.wander_radius = self.base_wander_radius * scale
-        self.wander_jitter = self.base_wander_jitter * scale
+        self.wander_dist = 1.0 * scale
+        self.wander_radius = 1.0 * scale
+        self.wander_jitter = 10.0 * scale
         self.bRadius = scale
         self.neighbours = []
-        self.weighted_sum = False
-        self.active_modes = []
-        self.sum_weighting = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        self.agent_number = len(self.world.agents)
-        self.flee_distance = 100
-        self.wander_parameter = 'dist'
+        self.sum_weighting = [0.15, 0.35, 0.30, 0.20]
+        self.align_subtracted = False
 
     def randomise_path(self):
         cx = self.world.cx
@@ -88,34 +79,8 @@ class Agent(object):
 
     def calculate(self, delta):
         # reset the steering force
-        self.wander_dist = self.base_wander_dist * self.bRadius
-        self.wander_radius = self.base_wander_radius * self.bRadius
-        self.wander_jitter = self.base_wander_jitter * self.bRadius
         mode = self.mode
-        sum_weighting = self.sum_weighting
-        if ((self.weighted_sum) and (len(self.active_modes) > 0)):
-            force = Vector2D()
-            if 'seek' in self.active_modes:
-                force += (self.seek(self.world.target) * sum_weighting[0])
-            if 'arrive_slow' in self.active_modes:
-                force += (self.arrive(self.world.target, 'slow') * sum_weighting[1])
-            if 'arrive_normal' in self.active_modes:
-                force += (self.arrive(self.world.target, 'normal') * sum_weighting[2])
-            if 'arrive_fast' in self.active_modes:
-                force += (self.arrive(self.world.target, 'fast') * sum_weighting[3])
-            if 'flee' in self.active_modes:
-                force += (self.flee(self.world.target) * sum_weighting[4])
-            if 'follow_path' in self.active_modes:
-                force += (self.follow_path() * sum_weighting[5])
-            if 'wander' in self.active_modes:
-                force += (self.wander(delta) * sum_weighting[6])
-            if 'alignment' in self.active_modes:
-                force += (self.alignment(delta) * sum_weighting[7])
-            if 'cohesion' in self.active_modes:
-                force += (self.cohesion(delta) * sum_weighting[8])
-            if 'separation' in self.active_modes:
-                force += (self.separation(delta) * sum_weighting[9])
-        elif mode == 'seek':
+        if mode == 'seek':
             force = self.seek(self.world.target)
         elif mode == 'arrive_slow':
             force = self.arrive(self.world.target, 'slow')
@@ -129,43 +94,17 @@ class Agent(object):
             force = self.follow_path()
         elif mode == 'wander':
             force = self.wander(delta)
-        elif mode == 'alignment':
-            force = self.alignment(delta)
-        elif mode == 'cohesion':
-            force = self.cohesion(delta)
-        elif mode == 'separation':
-           force = self.separation(delta)
+        elif mode == 'flocking':
+           force = self.flocking(delta)
         force.x /= self.mass
         force.y /= self.mass
         self.force = force
         return force
-
-    def weight_sums(self):
-        my_modes = self.active_modes
-        if len(my_modes) > 0:
-            old_weighting = []
-            for weight in self.sum_weighting:
-                old_weighting.append(weight)
-            for mode in my_modes:
-                self.sum_weighting[0] = my_modes.count('seek')/len(my_modes)
-                self.sum_weighting[1] = my_modes.count('arrive_slow')/len(my_modes)
-                self.sum_weighting[2] = my_modes.count('arrive_normal')/len(my_modes)
-                self.sum_weighting[3] = my_modes.count('arrive_fast')/len(my_modes)
-                self.sum_weighting[4] = my_modes.count('flee')/len(my_modes)
-                self.sum_weighting[5] = my_modes.count('follow_path')/len(my_modes)
-                self.sum_weighting[6] = my_modes.count('wander')/len(my_modes)
-                self.sum_weighting[7] = my_modes.count('alignment')/len(my_modes)
-                self.sum_weighting[8] = my_modes.count('cohesion')/len(my_modes)
-                self.sum_weighting[9] = my_modes.count('separation')/len(my_modes)
-            if self.sum_weighting != old_weighting:
-                print("Agent %d's current behaviour weighting is: " % (self.agent_number), end = "")
-                print("Seek: %f; Slow Arrive: %f; Normal Arrive: %f; Fast Arrive: %f; Flee: %f; Follow Path: %f; Wander: %f; Alignment: %f; Cohesion: %f; Separation: %f." % (self.sum_weighting[0], self.sum_weighting[1], self.sum_weighting[2], self.sum_weighting[3], self.sum_weighting[4], self.sum_weighting[5], self.sum_weighting[6], self.sum_weighting[7], self.sum_weighting[8], self.sum_weighting[9]))
-
+    
     def update(self, delta):
         ''' update vehicle position and orientation '''
-        if self.weighted_sum:
-            self.weight_sums()
-        self.neighbourhood()
+        if self.mode == 'flocking':
+            self.neighbourhood()
         force = self.calculate(delta)
         force.truncate(self.max_force)
         # new velocity
@@ -183,13 +122,13 @@ class Agent(object):
 
     def render(self, color=None):
         ''' Draw the triangle agent with color'''
-        if ((self.mode == 'follow_path') or ('follow_path' in self.active_modes)):
+        if (self.mode == 'follow_path'):
             self.path.render()
         egi.set_pen_color(name=self.color)
         pts = self.world.transform_points(self.vehicle_shape, self.pos,
                                           self.heading, self.side, self.scale)
 
-        if ((self.mode == 'wander') or ('wander' in self.active_modes)):
+        if (self.mode == 'wander'):
             wnd_pos = Vector2D(self.wander_dist, 0)
             wld_pos = self.world.transform_point(wnd_pos, self.pos, self.heading, self.side)
             egi.green_pen()
@@ -227,37 +166,6 @@ class Agent(object):
                 if dist <= self.group_threshold:
                     self.neighbours.append(agent)
 
-    def parameter_shift(self, op):
-        mode = self.mode
-        modes = self.active_modes
-        if ((mode == 'flee') or ('flee' in modes)):
-            if op == 'up':
-                self.flee_distance += 50
-            elif op == 'down':
-                self.flee_distance = max(0, self.flee_distance - 50)
-        if ((mode == 'follow_path') or ('follow_path' in modes)):
-            if op == 'up':
-                self.waypoint_threshold += 25
-            elif op == 'down':
-                self.waypoint_threshold = max(0, self.waypoint_threshold - 25)
-        if ((mode == 'wander') or ('wander' in modes)):
-            wan_param = self.wander_parameter
-            if wan_param == 'dist':
-                if op == 'up':
-                    self.base_wander_dist += 0.5
-                elif op == 'down':
-                    self.base_wander_dist = max(0, self.base_wander_dist - 0.5)
-            elif wan_param == 'radius':
-                if op == 'up':
-                    self.base_wander_radius += 0.5
-                elif op == 'down':
-                    self.base_wander_radius = max(0, self.base_wander_radius - 0.5)
-            elif wan_param == 'jitter':
-                if op == 'up':
-                    self.base_wander_jitter += 5
-                elif op == 'down':
-                    self.base_wander_jitter = max(0, self.base_wander_jitter - 5)
-
     #--------------------------------------------------------------------------
 
     def seek(self, target_pos):
@@ -267,7 +175,10 @@ class Agent(object):
 
     def flee(self, hunter_pos):
         ''' move away from hunter position '''
-        flee_dist = self.flee_distance
+        if self.mode == 'flee':
+            flee_dist = 100
+        elif self.mode == 'flocking':
+            flee_dist = 100
         if ((self.pos.x < hunter_pos.x + flee_dist) and (self.pos.x > hunter_pos.x - flee_dist)):
             if ((self.pos.y < hunter_pos.y + flee_dist) and (self.pos.y > hunter_pos.y - flee_dist)):
                 desired_vel = (self.pos - hunter_pos).normalise() * self.max_speed
@@ -293,11 +204,11 @@ class Agent(object):
             return (desired_vel - self.vel)
         return Vector2D(0, 0)
 
-    def pursuit(self, evader):
-        ''' this behaviour predicts where an agent will be in time T and seeks
-            towards that point to intercept it. '''
+#    def pursuit(self, evader):
+#        ''' this behaviour predicts where an agent will be in time T and seeks
+#            towards that point to intercept it. '''
 ## OPTIONAL EXTRA... pursuit (you'll need something to pursue!)
-        return Vector2D()
+#        return Vector2D()
 
     def follow_path(self):
         to_point = self.path.current_pt() - self.pos
@@ -342,8 +253,6 @@ class Agent(object):
                 new_force += agent.force
         if len(self.neighbours) > 0:
             new_force /= len(self.neighbours)
-        else:
-            return self.wander(delta)
         return new_force
 
     def cohesion(self, delta):
@@ -353,10 +262,12 @@ class Agent(object):
             centre_mass += agent.pos
         if len(self.neighbours) > 0:
             centre_mass /= len(self.neighbours)
+            if ((centre_mass.x + 50 > self.pos.x) or (centre_mass.x - 50 < self.pos.x) or (centre_mass.y + 50 > self.pos.y) or (centre_mass.y - 50 < self.pos.y)):
+                temp = self.sum_weighting[2]
+                self.sum_weighting[2] = self.sum_weighting[3]
+                self.sum_weighting[3] = temp
             steering_force = self.seek(centre_mass)
             return steering_force
-        else:
-            return self.wander(delta)
 
     def separation(self, delta):
         centre_mass = Vector2D()
@@ -365,7 +276,168 @@ class Agent(object):
             centre_mass += agent.pos
         if len(self.neighbours) > 0:
             centre_mass /= len(self.neighbours)
+            if ((centre_mass.x - 50 > self.pos.x) or (centre_mass.x + 50 < self.pos.x) or (centre_mass.y - 50 > self.pos.y) or (centre_mass.y + 50 < self.pos.y)):
+                temp = self.sum_weighting[2]
+                self.sum_weighting[2] = self.sum_weighting[3]
+                self.sum_weighting[3] = temp
             steering_force = self.flee(centre_mass)
             return steering_force
+
+    def flocking(self, delta):
+        steering_force = Vector2D()
+        if len(self.neighbours) > 0:
+            closest_neighbour = Vector2D()
+            blank_vector = Vector2D()
+            for neighbour in self.neighbours:
+                if closest_neighbour == blank_vector:
+                    closest_neighbour = neighbour.pos - self.pos
+                    closest_dist = closest_neighbour.length()
+                new_neighbour = neighbour.pos - self.pos
+                neighbour_dist = new_neighbour.length()
+                if neighbour_dist < closest_dist:
+                    closest_dist = neighbour_dist
+            if ((closest_dist < 100) and (self.sum_weighting[2] > self.sum_weighting[3])):
+                temp = self.sum_weighting[2]
+                self.sum_weighting[2] = self.sum_weighting[3]
+                self.sum_weighting[3] = temp
+                if not self.align_subtracted:
+                    self.sum_weighting[1] -= 0.2
+                    self.sum_weighting[3] += 0.2
+                    self.align_subtracted = True
+            elif ((closest_dist > 200) and (self.sum_weighting[3] > self.sum_weighting[2])):
+                temp = self.sum_weighting[3]
+                self.sum_weighting[3] = self.sum_weighting[2]
+                self.sum_weighting[2] = temp
+                if not self.align_subtracted:
+                    self.sum_weighting[1] -= 0.2
+                    self.sum_weighting[2] += 0.2
+                    self.align_subtracted = True
+            elif self.align_subtracted:
+                if self.sum_weighting[2] > self.sum_weighting[3]:
+                    self.sum_weighting[2] -= 0.2
+                elif self.sum_weighting[3] > self.sum_weighting[2]:
+                    self.sum_weighting[3] -= 0.2
+                else:
+                    self.sum_weighting[2] -= 0.1
+                    self.sum_weighting[3] -= 0.1
+                self.sum_weighting[1] += 0.2
+                self.align_subtracted = False
+            for weight in range(len(self.sum_weighting)):
+                self.sum_weighting[weight] = round(self.sum_weighting[weight], 2)
+            weights = self.sum_weighting
+            print(weights)
+            steering_force += (self.wander(delta) * weights[0])
+            steering_force += (self.alignment(delta) * weights[1])
+            steering_force += (self.cohesion(delta) * weights[2])
+            steering_force += (self.separation(delta) * weights[3])
         else:
-            return self.wander(delta)
+            steering_force = self.wander(delta)
+        return steering_force
+
+
+#---------------------------------------------------------------------------------------------------------
+#Code in this section is from before I fully understood the task.
+#I'm leaving it here as an archive.
+#Most of this code is for changing the parameters of the individual modes.
+#---------------------------------------------------------------------------------------------------------
+#self.weighted_sum = False
+#self.active_modes = []
+#self.sum_weighting = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+#self.agent_number = len(self.world.agents)
+#self.base_wander_dist = 1.0
+#self.base_wander_radius = 1.0
+#self.base_wander_jitter = 10.0
+#self.wander_dist = self.base_wander_dist * scale
+#self.wander_radius = self.base_wander_radius * scale
+#self.wander_jitter = self.base_wander_jitter * scale
+#self.wander_parameter = 'dist'
+#self.flee_distance = 100
+#---------------------------------------------------------------------------------------------------------
+#        self.wander_dist = self.base_wander_dist * self.bRadius
+#        self.wander_radius = self.base_wander_radius * self.bRadius
+#        self.wander_jitter = self.base_wander_jitter * self.bRadius
+#        sum_weighting = self.sum_weighting
+#        if ((self.weighted_sum) and (len(self.active_modes) > 0)):
+#            force = Vector2D()
+#            if 'seek' in self.active_modes:
+#                force += (self.seek(self.world.target) * sum_weighting[0])
+#            if 'arrive_slow' in self.active_modes:
+#                force += (self.arrive(self.world.target, 'slow') * sum_weighting[1])
+#            if 'arrive_normal' in self.active_modes:
+#                force += (self.arrive(self.world.target, 'normal') * sum_weighting[2])
+#            if 'arrive_fast' in self.active_modes:
+#                force += (self.arrive(self.world.target, 'fast') * sum_weighting[3])
+#            if 'flee' in self.active_modes:
+#                force += (self.flee(self.world.target) * sum_weighting[4])
+#            if 'follow_path' in self.active_modes:
+#                force += (self.follow_path() * sum_weighting[5])
+#            if 'wander' in self.active_modes:
+#                force += (self.wander(delta) * sum_weighting[6])
+#            if 'alignment' in self.active_modes:
+#                force += (self.alignment(delta) * sum_weighting[7])
+#            if 'cohesion' in self.active_modes:
+#                force += (self.cohesion(delta) * sum_weighting[8])
+#            if 'separation' in self.active_modes:
+#                force += (self.separation(delta) * sum_weighting[9])
+#        elif mode == 'alignment':
+#            force = self.alignment(delta)
+#        elif mode == 'cohesion':
+#            force = self.cohesion(delta)
+#        elif mode == 'separation':
+#           force = self.separation(delta)
+#---------------------------------------------------------------------------------------------------------
+#    def weight_sums(self):
+#        my_modes = self.active_modes
+#        if len(my_modes) > 0:
+#            old_weighting = []
+#            for weight in self.sum_weighting:
+#                old_weighting.append(weight)
+#            for mode in my_modes:
+#                self.sum_weighting[0] = my_modes.count('seek')/len(my_modes)
+#                self.sum_weighting[1] = my_modes.count('arrive_slow')/len(my_modes)
+#                self.sum_weighting[2] = my_modes.count('arrive_normal')/len(my_modes)
+#                self.sum_weighting[3] = my_modes.count('arrive_fast')/len(my_modes)
+#                self.sum_weighting[4] = my_modes.count('flee')/len(my_modes)
+#                self.sum_weighting[5] = my_modes.count('follow_path')/len(my_modes)
+#                self.sum_weighting[6] = my_modes.count('wander')/len(my_modes)
+#                self.sum_weighting[7] = my_modes.count('alignment')/len(my_modes)
+#                self.sum_weighting[8] = my_modes.count('cohesion')/len(my_modes)
+#                self.sum_weighting[9] = my_modes.count('separation')/len(my_modes)
+#            if self.sum_weighting != old_weighting:
+#                print("Agent %d's current behaviour weighting is: " % (self.agent_number), end = "")
+#                print("Seek: %f; Slow Arrive: %f; Normal Arrive: %f; Fast Arrive: %f; Flee: %f; Follow Path: %f; Wander: %f; Alignment: %f; Cohesion: %f; Separation: %f." % (self.sum_weighting[0], self.sum_weighting[1], self.sum_weighting[2], self.sum_weighting[3], self.sum_weighting[4], self.sum_weighting[5], self.sum_weighting[6], self.sum_weighting[7], self.sum_weighting[8], self.sum_weighting[9]))
+#---------------------------------------------------------------------------------------------------------
+#        if self.weighted_sum:
+#            self.weight_sums()
+#---------------------------------------------------------------------------------------------------------
+#    def parameter_shift(self, op):
+#        mode = self.mode
+#        modes = self.active_modes
+#        if ((mode == 'flee') or ('flee' in modes)):
+#            if op == 'up':
+#                self.flee_distance += 50
+#            elif op == 'down':
+#                self.flee_distance = max(0, self.flee_distance - 50)
+#        if ((mode == 'follow_path') or ('follow_path' in modes)):
+#            if op == 'up':
+#                self.waypoint_threshold += 25
+#            elif op == 'down':
+#                self.waypoint_threshold = max(0, self.waypoint_threshold - 25)
+#        if ((mode == 'wander') or ('wander' in modes)):
+#            wan_param = self.wander_parameter
+#            if wan_param == 'dist':
+#                if op == 'up':
+#                    self.base_wander_dist += 0.5
+#                elif op == 'down':
+#                    self.base_wander_dist = max(0, self.base_wander_dist - 0.5)
+#            elif wan_param == 'radius':
+#                if op == 'up':
+#                    self.base_wander_radius += 0.5
+#                elif op == 'down':
+#                    self.base_wander_radius = max(0, self.base_wander_radius - 0.5)
+#            elif wan_param == 'jitter':
+#               if op == 'up':
+#                    self.base_wander_jitter += 5
+#                elif op == 'down':
+#                    self.base_wander_jitter = max(0, self.base_wander_jitter - 5)
+#---------------------------------------------------------------------------------------------------------
